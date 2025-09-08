@@ -129,6 +129,11 @@ def to_token_weights(tokenizer, context, question, context_weights, question_wei
         
         word_buffer += " "
         word_buffer += question_words[index]
+
+    #Sanity Check
+    # print("\n\n\nSANITY CHECK")
+    # print(tokenizer.decode(tokens[context_index: context_index + len(tokenized_c_weights)], skip_special_tokens=True))
+    # print(tokenizer.decode(tokens[question_index: question_index + len(tokenized_q_weights)], skip_special_tokens=True))
     
     return context_index, tokenized_c_weights, question_index, tokenized_q_weights
 
@@ -330,6 +335,7 @@ def calc_attentions():
 
         results[f'{model_name}_context_ave'] = []
         results[f'{model_name}_question_ave'] = []
+        results[f'{model_name}_total_ave'] = []
         results[f'{model_name}_answer'] = []
         
         for x in range(len(ci)):
@@ -349,27 +355,33 @@ def calc_attentions():
             question_len = len(qw[x])
             new_tokens = len(attentions)
             layers = len(attentions[0])
+            seq_len = attentions[-1][-1].shape[-1]
             
             context_attns = torch.zeros(new_tokens, layers, context_len)
             question_attns = torch.zeros(new_tokens, layers, question_len)
+            total_attns = torch.zeros(new_tokens, layers, seq_len)
             
             for t in range(new_tokens):
                 for l in range(layers):
-                    context_attn = attentions[t][-1][0, :, -1, ci[x]:ci[x]+len(cw[x])].mean(0)
-                    question_attn = attentions[t][-1][0, :, -1, qi[x]:qi[x]+len(qw[x])].mean(0)
-                    context_attns[t, l, :] = context_attn
+                    total_attn = attentions[t][l][0, :, -1, :].mean(0)
+                    context_attn = attentions[t][l][0, :, -1, ci[x]:ci[x]+len(cw[x])].mean(0)
+                    question_attn = attentions[t][l][0, :, -1, qi[x]:qi[x]+len(qw[x])].mean(0)
+                    context_attns[t, l, :] = context_attn 
                     question_attns[t, l, :] = question_attn
-
-            #Get average attention weights for the context and question
+                    total_attns[t, l, :len(total_attn)] = total_attn
+            
+            #Get average attention weights for the context, question, and total accross all tokens and layers
             context_ave = torch.mean(context_attns, dim=(0, 1)).tolist()
             question_ave = torch.mean(question_attns, dim=(0, 1)).tolist()
+            total_ave = (total_attns.sum((0, 1)) / (total_attns != 0).sum((0, 1))).tolist()
 
             results[f'{model_name}_answer'].append(ans)
             results[f'{model_name}_context_ave'].append(context_ave)
             results[f'{model_name}_question_ave'].append(question_ave)
+            results[f'{model_name}_total_ave'].append(total_ave)
 
     df = pd.DataFrame(results, index=None)
-    df.to_csv('results2.csv', index=None)
+    df.to_csv('results3.csv', index=None)
 
 if __name__ == "__main__":
     calc_attentions()
